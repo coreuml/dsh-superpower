@@ -17,17 +17,117 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 11
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm typecheck
-      - run: node scripts/verify.mjs
+      # verify.mjs：静态检查（14 个技能、frontmatter、关键文件）
+      # smoke.mjs：把 lib/ 装进真实 SkillRegistry，断言 list()/get() 全部可用
+      - run: pnpm check
 
       # 打包自检：产物体积与内容
       - run: npm pack --dry-run
+
+  # 兼容性矩阵：证明 peerDependencies 声明的范围确实成立，而非纸面声明。
+  # 针对两类已发生过的回归：
+  #   1. dsh-skill 新版本被 peer 范围排除 -> DSH 预检禁用插件（0.2.0 线）
+  #   2. lib/*.d.ts 引用高于 peer 下限的 schemastery 泛型 -> 下限用户 TS2707
+  compat:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 目标线：最新 DSH
+          - dsh-skill: '0.2.0-rc.2'
+            schemastery: '^3.18.4'
+            cordis: '^4.0.4'
+          - dsh-skill: '0.2.0-rc.1'
+            schemastery: '^3.18.4'
+            cordis: '^4.0.4'
+          # 向后兼容：0.1.x 线（dsh-skill 自身依赖 schemastery ~3.18.4）
+          - dsh-skill: '0.1.7-rc.2'
+            schemastery: '~3.18.4'
+            cordis: '^4.0.4'
+          # peer 下限：证明 d.ts 不依赖 3.18.3 才引入的第三个泛型参数
+          - dsh-skill: '0.1.1-rc.2'
+            schemastery: '3.18.1'
+            cordis: '^4.0.1'
+          # peer 最下限：证明 0.0.x 的声明同样成立
+          - dsh-skill: '0.0.1-rc.1'
+            schemastery: '3.18.1'
+            cordis: '^4.0.1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 安装指定 DSH 依赖组合
+        run: |
+          pnpm add -D --save-exact \
+            "@deepseek-ai/dsh-skill@${{ matrix.dsh-skill }}" \
+            "@deepseek-ai/schemastery@${{ matrix.schemastery }}" \
+            "@deepseek-ai/cordis@${{ matrix.cordis }}"
+
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm smoke
+
+      # 消费端视角复验：skipLibCheck:false 下 lib/*.d.ts 必须能用本 matrix 的依赖编译。
+      # 用 symlink 把仓库自身挂成 @wenaixi/dsh-superpower，让 Node/TS 沿真实 node_modules
+      # 解析 cordis 等传递依赖（复制目录会破坏 pnpm 的符号链接结构）。
+      - name: "消费端类型复验（skipLibCheck: false）"
+        run: |
+          mkdir -p node_modules/@wenaixi .consumer-check
+          ln -sfn "$GITHUB_WORKSPACE" node_modules/@wenaixi/dsh-superpower
+
+          cat > .consumer-check/t.ts <<'TS'
+          import plugin, { Config, apply } from '@wenaixi/dsh-superpower'
+          import type { Context } from '@deepseek-ai/cordis'
+          export function use(ctx: Context): void { apply(ctx, Config({ providerName: 'x' })) }
+          export default plugin
+          TS
+          cat > .consumer-check/tsconfig.json <<'JSON'
+          {
+            "compilerOptions": {
+              "target": "ES2022", "module": "NodeNext", "moduleResolution": "NodeNext",
+              "strict": true, "skipLibCheck": false, "noEmit": true
+            },
+            "include": ["t.ts"]
+          }
+          JSON
+
+          node ./node_modules/typescript/bin/tsc -p .consumer-check/tsconfig.json
+          echo "✓ dsh-skill ${{ matrix.dsh-skill }} / schemastery ${{ matrix.schemastery }} 消费端编译通过"
+
+  # 证明 peerDependencies 不会被 npm 的 ERESOLVE 拒绝（npm 默认不匹配预发布版本）
+  eresolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: npm 严格 peer 安装自检
+        run: |
+          mkdir -p /tmp/eresolve && cd /tmp/eresolve
+          cat > package.json <<'JSON'
+          {
+            "name": "eresolve-check", "private": true,
+            "dependencies": { "@deepseek-ai/dsh-skill": "0.2.0-rc.2" }
+          }
+          JSON
+          npm install --no-audit --no-fund "$GITHUB_WORKSPACE"
+          echo "✓ npm 默认 peer 严格模式下安装成功"

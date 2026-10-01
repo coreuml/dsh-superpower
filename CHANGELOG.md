@@ -4,6 +4,30 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [6.4.0] - 2026-10-01
+
+### 变更
+
+- **兼容 DSH `0.2.0-rc.2`**：`peerDependencies["@deepseek-ai/dsh-skill"]` 增加 `>=0.2.0-rc.1 <0.3.0-0` 分支，覆盖 DSH `0.2.0-rc.1` / `0.2.0-rc.2` 预发布线，同时保留 `0.0.x` / `0.1.x` 全系列。
+
+### 修复
+
+- **修复 DSH 新版兼容性预检直接禁用插件**：DSH 自 `0.2.0-rc.1` 起在 profile 组合阶段对每个插件行执行 `evaluatePluginCompatibility()`，用运行时版本校验 `package.json#peerDependencies` 中所有 `@deepseek-ai/dsh-*` 条目，不满足即给该行打 `disabled` 并拒绝加载。原范围结尾 `<0.2.0-0` 把 0.2.x 全部排除，导致插件在 `0.2.0-rc.2` 上「装了但不生效」（无报错，仅启动日志 `disabling profile plugin ... incompatible`）。新范围下预检验证为 `COMPATIBLE`。
+- **固化 `lib/*.d.ts` 的 schemastery 类型依赖**：`export const Config` 由推断类型改为显式标注 `Schema<Config>`。`@deepseek-ai/schemastery` 自 `3.18.3` 起给 `Schemastery` 接口新增第三个泛型参数 `Mode`，未标注时 tsc 会把该泛型写进生成的 `.d.ts`；而 peer 下限仍是 `^3.18.1`，导致在下限版本上 `skipLibCheck: false` 的消费方报 `TS2707: Generic type 'Schema' requires between 0 and 2 type arguments`。显式标注后产物在 `3.18.1` / `3.18.3` / `3.18.4` 上均可编译。
+- **开发依赖对齐 0.2.0-rc.2 线**：`@deepseek-ai/dsh-skill` `0.1.1-rc.2 → 0.2.0-rc.2`、`@deepseek-ai/cordis` `^4.0.1 → ^4.0.4`、`@deepseek-ai/schemastery` `^3.18.1 → ^3.18.4`，`pnpm-lock.yaml` 同步刷新。
+
+### 验证
+
+- `pnpm build` / `pnpm typecheck` / `pnpm check`（`verify.mjs` 14/14 + `smoke.mjs` 14/14）全绿
+- 新增 `scripts/smoke.mjs`：把 `lib/` 装进真实 `SkillRegistry`，断言 `list()` 返回 14 条 `provider: superpowers`、`get()` 逐条正文与 `resourceBase` 可解析、未知技能返回 `undefined`。该脚本经反证测试（破坏 frontmatter 的 `name` 后确实失败），可捕获「技能被静默丢弃」这类 `verify.mjs` 抓不到的回归
+- 新增 CI `compat` 矩阵，对 `dsh-skill` `0.2.0-rc.2` / `0.2.0-rc.1` / `0.1.7-rc.2` / `0.1.1-rc.2` / `0.0.1-rc.1` × 对应 `schemastery`（含下限 `3.18.1`）逐格执行 build + typecheck + smoke，并以 `skipLibCheck: false` 从消费端复验 `lib/*.d.ts`
+- 新增 CI `eresolve` 作业：`npm install` 默认 peer 严格模式下安装成功
+- 本地实测：DSH 官方 `evaluatePluginCompatibility()` 对 `0.2.0-rc.2` / `0.2.0-rc.1` / `0.1.7-rc.2` / `0.1.1-rc.2` / `0.0.1-rc.1` 均返回 `COMPATIBLE`；同套 `lib/` 在 `0.2.0-rc.2` 与 `0.1.7-rc.2` 上行为一致
+
+### 说明
+
+- 插件源码对 `0.2.0-rc.2` 无需任何行为改动：`SkillProvider` 三角色接口、`SkillCandidate` / `SkillDefinition`、`rank` 语义、`ctx.skills.registerProvider()` 与 `skills/change` 事件在 `0.1.1-rc.2 → 0.2.0-rc.2` 之间保持兼容。本次变更集中在**依赖声明**与**产物类型稳定性**。
+
 ## [6.3.1] - 2026-08-23
 
 ### 变更
@@ -154,6 +178,7 @@
 
 上游 `v6.2.0` / `v6.1.x` / `v6.0.x` 等变更见上游仓库 Release Notes。上游 `package.json#version` 变更时，本仓库同步 bump。
 
+[6.4.0]: https://github.com/Wenaixi/dsh-superpower/releases/tag/v6.4.0
 [6.3.1]: https://github.com/Wenaixi/dsh-superpower/releases/tag/v6.3.1
 [6.3.0-dsh.10]: https://github.com/Wenaixi/dsh-superpower/releases/tag/v6.3.0-dsh.10
 [6.3.0-dsh.9]: https://github.com/Wenaixi/dsh-superpower/releases/tag/v6.3.0-dsh.9

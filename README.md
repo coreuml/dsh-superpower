@@ -34,7 +34,7 @@ dsh --profile web  # 进会话，技能自动可用
 
 ```bash
 git clone https://github.com/Wenaixi/dsh-superpower.git && cd dsh-superpower
-pnpm install && pnpm build && node scripts/verify.mjs   # 14/14 PASS
+pnpm install && pnpm build && pnpm check   # verify 14/14 + smoke 14/14 PASS
 dsh plugin --profile web add ./                           # 本地路径安装
 pnpm pack && dsh plugin --profile web add ./wenaixi-dsh-superpower-*.tgz  # 离线 tarball
 
@@ -78,19 +78,34 @@ dsh plugin --profile web remove @wenaixi/dsh-superpower
 ## 开发
 
 ```bash
-pnpm install && pnpm build && pnpm typecheck && node scripts/verify.mjs
+pnpm install && pnpm build && pnpm typecheck && pnpm check
 dsh --profile web --dump-config  # 断言 "# == @wenaixi/dsh-superpower"
 ```
+
+`pnpm check` = `verify.mjs`（静态：14 个技能 / frontmatter / 关键文件）+ `smoke.mjs`（动态：把 `lib/` 装进真实 `SkillRegistry`，断言 14 条技能 `list()`/`get()` 均可用）。CI 另有 `compat` 矩阵，跨 `dsh-skill` `0.0.1-rc.1` … `0.2.0-rc.2` 逐格复验，防止 peer 范围与产物类型再次漂移。
 
 ## 目录
 
 ```
 src/superpowers.ts  # SkillProvider rank 550
 skills/             # 14 技能（中文化）
+scripts/            # verify.mjs（静态校验）+ smoke.mjs（真实 Registry 冒烟）
 lib/                # 已提交，GitHub 直装零构建
 ```
 
-版本：`v6.3.1` 起本仓库脱离上游独立演进（上游基准锁定 `obra/superpowers v6.3.0`），后续变更以正式版本线发布；`tag v*` 触发发布，`push` 仅跑 CI。详见 `CHANGELOG.md`。
+版本：`v6.3.1` 起本仓库脱离上游独立演进（上游基准锁定 `obra/superpowers v6.3.0`），后续变更以正式版本线发布；`tag v*` 触发发布，`push` 仅跑 CI。当前 `v6.4.0` 起兼容 DSH `0.2.0-rc.2`。详见 `CHANGELOG.md`。
+
+## 兼容性
+
+| DSH 版本 | 支持 |
+|---|---|
+| `0.2.0-rc.2` / `0.2.0-rc.1` | ✅ 已适配并验证（`v6.4.0` 起） |
+| `0.1.x` 全系列（含 `-rc` / `-alpha` 预发布） | ✅ 向后兼容 |
+| `0.0.x` 全系列 | ✅ 向后兼容 |
+
+DSH 自 `0.2.0-rc.1` 起会在 profile 组合阶段用运行时版本校验插件的 `peerDependencies` 中所有 `@deepseek-ai/dsh-*` 条目；不满足时该插件行会被标记 `disabled` 并拒绝加载，表现为「装了但不生效」。本插件 `peerDependencies` 已覆盖 `0.0.x` / `0.1.x` / `0.2.x` 三条线，无需版本豁免（`dsh plugin allow-version`）。
+
+若安装后技能未出现，先确认 DSH 版本落在上表范围内，再查启动日志有无 `disabling profile plugin ... incompatible` 字样。
 
 ## 常见问题
 

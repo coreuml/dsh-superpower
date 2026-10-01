@@ -24,17 +24,19 @@ import Schema from '@deepseek-ai/schemastery'
 // Config — 默认值写在 schema 里；可选字段用可选属性声明
 // ---------------------------------------------------------------------------
 
-export const Config = Schema.object({
+export interface Config {
+  providerName: string
+  skillDir?: string
+}
+
+// 显式标注 Schema<Config>：否则 tsc 推断出的内联类型会随 @deepseek-ai/schemastery
+// 3.18.3 起新增的第三个泛型参数（Mode）而变，使 lib/*.d.ts 在 peer 下限 3.18.1 上无法编译。
+export const Config: Schema<Config> = Schema.object({
   /** 注册到 ctx.skills 的 provider 名称，默认为 superpowers；不可为保留名 runtime */
   providerName: Schema.string().default('superpowers'),
   /** skill 目录绝对路径，默认取包内 skills/；便于本地调试指向其他目录 */
   skillDir: Schema.string(),
 }).description('@wenaixi/dsh-superpower 插件配置')
-
-export interface Config {
-  providerName: string
-  skillDir?: string
-}
 
 // ---------------------------------------------------------------------------
 // 插件元信息
